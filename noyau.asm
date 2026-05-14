@@ -12,6 +12,18 @@ start:
     mov ebx, msg
     int 0x80
 
+    ; --- TEST FAT / ATA ---
+    ; 1. On écrit nos données de test physiquement sur le disque
+    call fat_test_write
+    
+    ; 2. On lit le disque pour remplir le 'buffer_lecture'
+    call fat_test_read
+
+    ; 3. On affiche le contenu du 'buffer_lecture' avec notre interruption système
+    mov eax, 2
+    mov ebx, buffer_lecture
+    int 0x80
+
 idle:
     hlt                     ; Arrête le processeur
     jmp idle
@@ -28,3 +40,4 @@ msg db "Systeme amorce !", 10, "Mode d'affichage VGA : OK", 10, "Pilote Clavier 
 
 ; On s'assure que le noyau occupe au moins un secteur complet
 times 5120-($-$$) db 0
+times 51200-($-$$) db 0

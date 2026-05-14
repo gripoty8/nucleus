@@ -1,6 +1,31 @@
 [bits 16]
 [org 0x7c00]
 
+jmp short start
+nop
+
+; --- En-tête BPB (BIOS Parameter Block) FAT16 ---
+OEMname             db "NUCLEUS "   ; 8 octets
+bytesPerSector      dw 512          ; [11] 2 octets
+sectPerCluster      db 1            ; [13] 1 octet
+reservedSectors     dw 1            ; [14] 2 octets (Le bootloader lui-même)
+numFAT              db 2            ; [16] 1 octet
+numRootDirEntries   dw 512          ; [17] 2 octets
+numSectors          dw 2880         ; [19] 2 octets
+mediaType           db 0xf0         ; [21] 1 octet
+numFATsectors       dw 9            ; [22] 2 octets
+sectorsPerTrack     dw 18           ; [24] 2 octets
+numHeads            dw 2            ; [26] 2 octets
+numHiddenSectors    dd 0            ; [28] 4 octets
+numSectorsHuge      dd 0            ; [32] 4 octets
+driveNum            db 0            ; [36] 1 octet
+reserved            db 0            ; [37] 1 octet
+signature           db 0x29         ; [38] 1 octet
+volumeID            dd 0x12345678   ; [39] 4 octets
+volumeLabel         db "NUCLEUS OS " ; [43] 11 octets
+fileSysType         db "FAT16   "   ; [54] 8 octets
+
+start:
 KERNEL_OFFSET equ 0x1000 ; Adresse mémoire où on va charger le noyau
 
 mov [BOOT_DRIVE], dl    ; Le BIOS stocke le numéro du disque de boot dans DL

@@ -32,7 +32,29 @@ fat_init:
     add eax, ebx
     mov [fat_data_lba], eax
 
-    ; (Ici, on pourrait chaîner d'autres fonctions pour lire/écrire des fichiers)
+    popa
+    ret
 
+; --- DONNEES DE TEST POUR LECTURE / ECRITURE ---
+donnees_test db "SUCCESS: Lecture et Ecriture depuis le disque FAT via ATA !", 10, 0
+times 512 - ($ - donnees_test) db 0 ; Remplissage pour faire 512 octets pile
+
+buffer_lecture times 512 db 0
+
+; Test : Écriture du secteur de test au début de la zone de données FAT
+fat_test_write:
+    pusha
+    mov eax, [fat_data_lba]     ; LBA du début des données FAT
+    mov esi, donnees_test       ; Adresse des données à écrire (ESI pour outsw)
+    call ata_write_sector
+    popa
+    ret
+
+; Test : Lecture de ce même secteur vers notre buffer vide
+fat_test_read:
+    pusha
+    mov eax, [fat_data_lba]     ; LBA du début des données FAT
+    mov edi, buffer_lecture     ; Adresse de destination (EDI pour insw)
+    call ata_read_sector
     popa
     ret
