@@ -13,8 +13,11 @@ start:
     int 0x80
 
     ; --- TEST FAT / ATA ---
-    ; 1. On écrit nos données de test physiquement sur le disque
-    call fat_test_write
+    ; 1. Création dynamique d'un fichier avec nos propres paramètres
+    mov esi, nom_mon_fichier
+    mov edi, contenu_mon_fichier
+    mov ecx, taille_mon_fichier
+    call fat_create_file
     
     ; 2. On lit le disque pour remplir le 'buffer_lecture'
     call fat_test_read
@@ -38,6 +41,10 @@ idle:
 
 msg db "Systeme amorce !", 10, "Mode d'affichage VGA : OK", 10, "Pilote Clavier IRQ1 : OK", 10, "Pilote Disque ATA & FAT : OK", 10, "Tapez une touche...", 10, 0
 
-; On s'assure que le noyau occupe au moins un secteur complet
-times 5120-($-$$) db 0
-times 51200-($-$$) db 0
+nom_mon_fichier db "FICHIER TXT"  ; Nom (8 cars) + Espace + Extension (3 cars) = 11 pile !
+contenu_mon_fichier db "Contenu du fichier cree dynamiquement avec la taille ajustee !", 10, 0
+taille_mon_fichier equ $ - contenu_mon_fichier
+
+; On remplit l'image pour atteindre exactement 1.44 Mo (2880 secteurs au total, dont 1 secteur de boot)
+; Cela évite que QEMU lève une erreur si on écrit au-delà de la fin réelle du fichier os.img !
+times (2879 * 512) - ($ - $$) db 0

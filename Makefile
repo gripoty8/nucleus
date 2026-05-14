@@ -13,7 +13,7 @@ os.img: boot.bin noyau.bin
 	cat boot.bin noyau.bin > os.img
 
 run: os.img
-	$(EMU) -drive format=raw,file=os.img,index=0,media=disk
+	$(EMU) -drive format=raw,file=os.img,index=0,media=disk,if=ide,cache=writethrough
 
 clean:
 	rm -f *.bin *.img

@@ -1,102 +1,137 @@
 [bits 32]
 
-; Lit 1 secteur (512 octets) depuis le disque
-; EAX = Adresse LBA (Logical Block Address) du secteur
-; EDI = Adresse en mémoire où stocker les données lues
+; Lit 1 secteur (512 octets) depuis le disque en mode LBA28
+; IN: EAX = Adresse LBA du secteur
+;     EDI = Adresse mémoire de destination
 ata_read_sector:
     pusha
-    mov ebx, eax
-    mov dx, 0x1F7
-.wait1:
-    in al, dx
-    test al, 0x80           ; Attend que le bit BSY (Busy) soit à 0
-    jnz .wait1
+    mov ebx, eax            ; Sauvegarde LBA
 
+    ; Attendre que le disque soit prêt (BSY=0 et DRDY=1)
+    mov dx, 0x1F7
+.wait_ready:
+    in al, dx
+    and al, 0xC0
+    cmp al, 0x40
+    jne .wait_ready
+
+    ; --- Configuration de la lecture ---
     mov dx, 0x1F2
     mov al, 1
-    out dx, al              ; Nombre de secteurs = 1
+    out dx, al              ; Nombre de secteurs à lire: 1
 
-    ; Envoi de l'adresse LBA (28 bits) sur les différents ports
+    ; Envoyer l'adresse LBA (28 bits)
+    mov eax, ebx            ; Récupère LBA
     mov dx, 0x1F3
-    mov eax, ebx
-    out dx, al              ; LBA low
-    mov dx, 0x1F4
-    mov al, ah
-    out dx, al              ; LBA mid
-    mov dx, 0x1F5
-    shr eax, 16
-    out dx, al              ; LBA high
-    mov dx, 0x1F6
+    out dx, al              ; LBA bits 0-7
     shr eax, 8
-    and al, 0x0F
-    or al, 0xE0             ; Mode LBA (0x40) + Drive Master (0xA0) -> 0xE0
-    out dx, al              ; LBA highest nibble + drive
+    mov dx, 0x1F4
+    out dx, al              ; LBA bits 8-15
+    shr eax, 8
+    mov dx, 0x1F5
+    out dx, al              ; LBA bits 16-23
+    shr eax, 8
+    mov dx, 0x1F6
+    and al, 0x0F            ; Garde seulement les bits 24-27
+    or al, 0xE0             ; Mode LBA + disque maître
+    out dx, al
 
+    ; Envoyer la commande de lecture
     mov dx, 0x1F7
     mov al, 0x20
-    out dx, al              ; Commande : Lecture de secteur(s)
+    out dx, al              ; Commande: READ SECTOR(S)
 
-.wait2:
+    ; Attendre que le disque ait des données prêtes (DRQ=1)
+.wait_drq:
     in al, dx
-    test al, 1              ; Vérifie si le bit ERR (Erreur matérielle) est à 1
-    jnz .erreur
-    test al, 8              ; Attend que le bit DRQ (Data Request) soit à 1
-    jz .wait2
+    test al, 1              ; Vérifier le bit d'erreur
+    jnz .error
+    test al, 8              ; Attendre le bit DRQ
+    jz .wait_drq
 
+    ; Lire les données depuis le port
     mov dx, 0x1F0
-    mov ecx, 256            ; 256 mots de 16 bits = 512 octets
-    rep insw                ; Lecture des données vers [EDI]
+    mov ecx, 256            ; 256 mots de 16-bit = 512 octets
+    rep insw                ; Copie les données du port vers [EDI]
 
-.erreur:
+.error:
     popa
     ret
 
-; Écrit 1 secteur (512 octets) sur le disque
-; EAX = Adresse LBA (Logical Block Address) du secteur
-; ESI = Adresse en mémoire d'où lire les données à écrire
+; Écrit 1 secteur (512 octets) sur le disque en mode LBA28
+; IN: EAX = Adresse LBA du secteur
+;     ESI = Adresse mémoire source
 ata_write_sector:
     pusha
-    mov ebx, eax
-    mov dx, 0x1F7
-.wait1:
-    in al, dx
-    test al, 0x80           ; Attend que le bit BSY (Busy) soit à 0
-    jnz .wait1
+    mov ebx, eax            ; Sauvegarde LBA
 
+    ; Attendre que le disque soit prêt (BSY=0 et DRDY=1)
+    mov dx, 0x1F7
+.wait_ready:
+    in al, dx
+    and al, 0xC0
+    cmp al, 0x40
+    jne .wait_ready
+
+    ; --- Configuration de l'écriture ---
     mov dx, 0x1F2
     mov al, 1
-    out dx, al              ; Nombre de secteurs = 1
+    out dx, al              ; Nombre de secteurs à écrire: 1
 
+    ; Envoyer l'adresse LBA (28 bits)
+    mov eax, ebx            ; Récupère LBA
     mov dx, 0x1F3
-    mov eax, ebx
-    out dx, al              ; LBA low
-    mov dx, 0x1F4
-    mov al, ah
-    out dx, al              ; LBA mid
-    mov dx, 0x1F5
-    shr eax, 16
-    out dx, al              ; LBA high
-    mov dx, 0x1F6
+    out dx, al              ; LBA bits 0-7
     shr eax, 8
-    and al, 0x0F
-    or al, 0xE0             ; Mode LBA (0x40) + Drive Master (0xA0) -> 0xE0
-    out dx, al              ; LBA highest nibble + drive
+    mov dx, 0x1F4
+    out dx, al              ; LBA bits 8-15
+    shr eax, 8
+    mov dx, 0x1F5
+    out dx, al              ; LBA bits 16-23
+    shr eax, 8
+    mov dx, 0x1F6
+    and al, 0x0F            ; Garde seulement les bits 24-27
+    or al, 0xE0             ; Mode LBA + disque maître
+    out dx, al
 
+    ; Envoyer la commande d'écriture
     mov dx, 0x1F7
     mov al, 0x30
-    out dx, al              ; Commande : Écriture de secteur(s)
+    out dx, al              ; Commande: WRITE SECTOR(S)
 
-.wait2:
+    ; Attendre que le disque soit prêt à recevoir les données (DRQ=1)
+.wait_drq:
     in al, dx
-    test al, 1              ; Vérifie si le bit ERR (Erreur matérielle) est à 1
-    jnz .erreur
-    test al, 8              ; Attend que le bit DRQ (Data Request) soit à 1
-    jz .wait2
+    test al, 1              ; Vérifier le bit d'erreur
+    jnz .error
+    test al, 8              ; Attendre le bit DRQ
+    jz .wait_drq
 
+    ; Écrire les données sur le port
     mov dx, 0x1F0
-    mov ecx, 256            ; 256 mots de 16 bits = 512 octets
-    rep outsw               ; Écriture des données depuis [ESI]
+    mov ecx, 256            ; 256 mots de 16-bit = 512 octets
+    rep outsw               ; Copie les données de [ESI] vers le port
 
-.erreur:
+    ; Forcer l'écriture physique depuis le cache du disque
+    mov dx, 0x1F7
+    mov al, 0xE7            ; Commande: FLUSH CACHE
+    out dx, al
+
+    ; Attendre la fin du flush (BSY=0)
+.wait_flush:
+    in al, dx
+    test al, 0x80
+    jnz .wait_flush
+
+    ; Succès de l'écriture : on sort de la fonction sans exécuter l'erreur
     popa
     ret
+
+.error:
+    mov eax, 2
+    mov ebx, msgErreur
+    int 0x80
+    popa
+    ret
+
+msgErreur db "Erreur materielle",0

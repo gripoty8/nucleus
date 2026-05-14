@@ -8,7 +8,7 @@ nop
 OEMname             db "NUCLEUS "   ; 8 octets
 bytesPerSector      dw 512          ; [11] 2 octets
 sectPerCluster      db 1            ; [13] 1 octet
-reservedSectors     dw 1            ; [14] 2 octets (Le bootloader lui-même)
+reservedSectors     dw 16           ; [14] 2 octets (Bootloader + Espace pour le Noyau)
 numFAT              db 2            ; [16] 1 octet
 numRootDirEntries   dw 512          ; [17] 2 octets
 numSectors          dw 2880         ; [19] 2 octets
@@ -49,7 +49,7 @@ jmp $                   ; Sécurité
 
 load_kernel:
     mov bx, KERNEL_OFFSET ; Destination en mémoire
-    mov dh, 10             ; Nombre de secteurs à lire (notre mini-noyau)
+    mov dh, 30             ; Nombre de secteurs à lire (augmenté car le noyau grandit !)
     mov dl, [BOOT_DRIVE]
     
     mov ah, 0x02          ; BIOS read sector function
