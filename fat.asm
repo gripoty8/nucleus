@@ -7,6 +7,8 @@ fat_root_dir_lba dd 0
 fat_data_lba dd 0
 fat_fat1_lba dd 0
 fat_fat2_lba dd 0
+current_dir_lba dd 0
+current_dir_cluster dd 0
 
 ; Initialise la FAT en lisant le secteur 0 (assumé comme Boot Sector / VBR non partitionné)
 fat_init:
@@ -31,6 +33,8 @@ fat_init:
     imul ebx, ecx
     add eax, ebx
     mov [fat_root_dir_lba], eax
+    mov [current_dir_lba], eax
+    mov dword [current_dir_cluster], 0
 
     ; Calculer le LBA du début de l'espace de données (Après le Root Dir)
     ; RootDirSectors = (RootDirEntries * 32) / 512
@@ -110,3 +114,116 @@ fat_test_read:
     call ata_read_sector
     popa
     ret
+
+; Crée le dossier BIN et ajoute l'exécutable LS
+fat_setup_bin_dir:
+    pusha
+    ; 1. Mise à jour de la table FAT (Clusters 0, 1, 2(FICHIER), 3(BIN), 4(LS), 5(RM))
+    mov word [fat_table_buffer], 0xFFF0
+    mov word [fat_table_buffer+2], 0xFFFF
+    mov word [fat_table_buffer+4], 0xFFFF
+    mov word [fat_table_buffer+6], 0xFFFF
+    mov word [fat_table_buffer+8], 0xFFFF
+    mov word [fat_table_buffer+10], 0xFFFF
+    
+    mov eax, [fat_fat1_lba]
+    mov esi, fat_table_buffer
+    call ata_write_sector
+    mov eax, [fat_fat2_lba]
+    call ata_write_sector
+    
+    ; 2. Création de l'entrée BIN dans le Root Dir
+    mov eax, [fat_root_dir_lba]
+    mov edi, buffer_lecture
+    call ata_read_sector
+    
+    mov esi, buffer_lecture
+    mov ecx, 16
+.find_empty_root:
+    cmp byte [esi], 0
+    je .found_empty_root
+    add esi, 32
+    loop .find_empty_root
+.found_empty_root:
+    mov dword [esi], 'BIN '
+    mov dword [esi+4], '    '
+    mov dword [esi+8], '   '
+    mov byte [esi+11], 0x10 ; Attribut Dossier (Sub-Directory)
+    mov word [esi+26], 3    ; Cluster 3
+    mov dword [esi+28], 0   ; Taille 0 pour un dossier
+    
+    mov eax, [fat_root_dir_lba]
+    mov esi, buffer_lecture
+    call ata_write_sector
+    
+    ; 3. Initialisation du contenu du dossier BIN (Cluster 3) avec l'entrée LS
+    mov edi, buffer_lecture
+    mov ecx, 512
+    xor al, al
+    rep stosb           ; Vider le secteur
+    
+    mov edi, buffer_lecture
+    ; Entrée 1 : "."
+    mov dword [edi], '.   '
+    mov dword [edi+4], '    '
+    mov dword [edi+8], '   '
+    mov byte [edi+11], 0x10 ; Attribut Dossier (Sub-Directory)
+    mov word [edi+26], 3    ; Cluster 3 (BIN)
+    mov dword [edi+28], 0
+    
+    ; Entrée 2 : ".."
+    add edi, 32
+    mov dword [edi], '..  '
+    mov dword [edi+4], '    '
+    mov dword [edi+8], '   '
+    mov byte [edi+11], 0x10 ; Attribut Dossier
+    mov word [edi+26], 0    ; Cluster 0 (Root)
+    mov dword [edi+28], 0
+    
+    ; Entrée 3 : "LS"
+    add edi, 32
+    mov dword [edi], 'LS  '
+    mov dword [edi+4], '    '
+    mov dword [edi+8], '   '
+    mov byte [edi+11], 0x20
+    mov word [edi+26], 4    ; Cluster 4
+    mov eax, ls_program_size
+    mov dword [edi+28], eax
+    
+    ; Entrée 4 : "RM"
+    add edi, 32
+    mov dword [edi], 'RM  '
+    mov dword [edi+4], '    '
+    mov dword [edi+8], '   '
+    mov byte [edi+11], 0x20
+    mov word [edi+26], 5    ; Cluster 5
+    mov eax, rm_program_size
+    mov dword [edi+28], eax
+    
+    mov eax, [fat_data_lba]
+    inc eax                 ; LBA du Cluster 3 (fat_data_lba + 1)
+    mov esi, buffer_lecture
+    call ata_write_sector
+    
+    ; 4. Écriture physique de l'exécutable LS (Cluster 4)
+    mov eax, [fat_data_lba]
+    add eax, 2              ; LBA du Cluster 4 (fat_data_lba + 2)
+    mov esi, ls_program_data
+    call ata_write_sector
+    
+    ; 5. Écriture physique de l'exécutable RM (Cluster 5)
+    mov eax, [fat_data_lba]
+    add eax, 3              ; LBA du Cluster 5 (fat_data_lba + 3)
+    mov esi, rm_program_data
+    call ata_write_sector
+    
+    popa
+    ret
+
+ls_program_data:
+    incbin "ls.bin"
+ls_program_size equ $ - ls_program_data
+
+rm_program_data:
+    incbin "rm.bin"
+rm_program_size equ $ - rm_program_data

@@ -60,22 +60,51 @@ init_idt:
     ret
 
 ; Notre appel système - int 0x80
-; EAX = Fonction désirée : 1 = Afficher char (dans BL), 2 = Afficher chaîne (dans EBX)
+; EAX = Fonction désirée
 isr_systeme:
-    pusha
     cmp eax, 1
-    je .fonction_char
+    je .sys_print_char
     cmp eax, 2
-    je .fonction_chaine
-    jmp .fin
+    je .sys_print_string
+    cmp eax, 3
+    je .sys_exit
+    cmp eax, 4
+    je .sys_read_sector
+    cmp eax, 5
+    je .sys_get_root
+    cmp eax, 6
+    je .sys_write_sector
+    iret
 
-.fonction_char:
+.sys_print_char:
+    pusha
     mov al, bl
     call afficher_caractere
-    jmp .fin
-.fonction_chaine:
+    popa
+    iret
+.sys_print_string:
+    pusha
     mov esi, ebx
     call afficher_chaine
-.fin:
     popa
+    iret
+.sys_exit:
+    sti                  ; Réactive les interruptions matérielles
+    jmp shell_loop_start ; Retour brutal mais infaillible au Shell
+.sys_read_sector:
+    pusha
+    mov eax, ebx
+    mov edi, ecx
+    call ata_read_sector
+    popa
+    iret
+.sys_write_sector:
+    pusha
+    mov eax, ebx
+    mov esi, ecx
+    call ata_write_sector
+    popa
+    iret
+.sys_get_root:
+    mov eax, [current_dir_lba] ; Renvoie le répertoire courant à l'utilisateur via EAX
     iret
