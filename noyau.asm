@@ -21,13 +21,8 @@ start:
     cmp byte [buffer_lecture], 0    ; Le premier octet est 0 si le disque est vierge
     jne skip_init                   ; Si ce n'est pas 0, on conserve les données !
 
-    ; 1. Création dynamique d'un fichier avec nos propres paramètres
-    mov esi, nom_mon_fichier
-    mov edi, contenu_mon_fichier
-    mov ecx, taille_mon_fichier
-    call fat_create_file
-    
-    ; 2. Création du dossier BIN et des programmes dans le FileSystem
+    ; Le disque est vierge, on procède à l'installation initiale du système de fichiers.
+    ; Cette fonction crée LISEZMOITXT, NANO, le dossier BIN et les commandes LS/RM.
     call fat_setup_bin_dir
 
 skip_init:
@@ -66,10 +61,6 @@ process_cmd:
 %include "fat.asm"
 
 msg db "Systeme amorce !", 10, "Mode d'affichage VGA : OK", 10, "Pilote Clavier IRQ1 : OK", 10, "Pilote Disque ATA & FAT : OK", 10, "Tapez une touche...", 10, 0
-
-nom_mon_fichier db "FICHIER TXT"  ; Nom (8 cars) + Espace + Extension (3 cars) = 11 pile !
-contenu_mon_fichier db "Contenu du fichier cree dynamiquement avec la taille ajustee !", 10, 0
-taille_mon_fichier equ $ - contenu_mon_fichier
 
 prompt_msg db "NUCLEUS> ", 0
 msg_not_found db "Commande introuvable", 10, 0
@@ -143,29 +134,62 @@ search_and_execute:
     ret
 .not_cd:
 
-    ; Lire le dossier BIN (Cluster 3 = LBA fat_data_lba + 1)
-    mov eax, [fat_data_lba]
-    inc eax
+    ; --- Recherche d'exécutable ---
+    ; La logique est : 1. Chercher dans le dossier courant. 2. Si non trouvé, chercher dans /BIN.
+
+    ; 1. Recherche dans le dossier courant
+    cld                         ; Assurer que le Direction Flag est à 0 pour `repe cmpsb`
+    mov eax, [current_dir_lba]
     mov edi, buffer_lecture
     call ata_read_sector
     
     mov esi, buffer_lecture
     mov edx, 16
-.search_loop:
+.search_current_dir_loop:
     cmp byte [esi], 0
-    je .not_found
+    je .search_in_bin           ; Fin du dossier, on passe à la recherche dans /BIN
+    cmp byte [esi], 0xE5
+    je .next_in_current         ; Entrée supprimée, on passe à la suivante
     
     pusha
     mov edi, formatted_cmd
     mov ecx, 11
     repe cmpsb
     popa
-    je .found
-    
+    je .found                   ; Trouvé !
+
+.next_in_current:
     add esi, 32
     dec edx
-    jnz .search_loop
+    jnz .search_current_dir_loop
+
+.search_in_bin:
+    ; 2. Recherche dans /BIN (notre "PATH" système)
+    mov eax, [fat_data_lba]
+    inc eax                     ; LBA du cluster 3 (/BIN)
+    mov edi, buffer_lecture
+    call ata_read_sector
     
+    mov esi, buffer_lecture
+    mov edx, 16
+.search_bin_loop:
+    cmp byte [esi], 0
+    je .not_found               ; Fin du dossier /BIN, commande non trouvée
+    cmp byte [esi], 0xE5
+    je .next_in_bin             ; Entrée supprimée
+    
+    pusha
+    mov edi, formatted_cmd
+    mov ecx, 11
+    repe cmpsb
+    popa
+    je .found                   ; Trouvé !
+
+.next_in_bin:
+    add esi, 32
+    dec edx
+    jnz .search_bin_loop
+
 .not_found:
     mov eax, 2
     mov ebx, msg_not_found

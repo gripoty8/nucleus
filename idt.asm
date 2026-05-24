@@ -74,6 +74,10 @@ isr_systeme:
     je .sys_get_root
     cmp eax, 6
     je .sys_write_sector
+    cmp eax, 7
+    je .sys_clear_screen
+    cmp eax, 8
+    je .sys_get_char
     iret
 
 .sys_print_char:
@@ -107,4 +111,54 @@ isr_systeme:
     iret
 .sys_get_root:
     mov eax, [current_dir_lba] ; Renvoie le répertoire courant à l'utilisateur via EAX
+    mov ebx, [fat_data_lba]    ; Renvoie la base des données FAT dans EBX
+    iret
+
+.sys_clear_screen:
+    pusha
+    call init_affichage
+    popa
+    iret
+
+.sys_get_char:
+    push ebx
+    push ecx
+    mov ebx, [kbd_buffer_idx]
+    mov byte [kbd_enter_pressed], 0 ; Ignore la touche "Entrée" fantôme venant du Shell
+.wait_char:
+    sti
+    hlt
+    
+    ; 1. Vérification matérielle de la touche ECHAP (Scancode 0x01)
+    in al, 0x60
+    cmp al, 0x01
+    je .esc_pressed
+
+    ; 2. Vérification de la touche Entrée
+    cmp byte [kbd_enter_pressed], 1
+    je .enter_pressed
+
+    ; 3. Vérification d'un nouveau caractère dans le buffer
+    mov ecx, [kbd_buffer_idx]
+    cmp ebx, ecx
+    je .wait_char
+    jg .backspace_pressed
+    
+    ; Nouveau caractère ajouté !
+    dec ecx
+    mov al, [kbd_buffer + ecx]
+    jmp .done_get_char
+
+.backspace_pressed:
+    mov al, 0x08
+    jmp .done_get_char
+.esc_pressed:
+    mov al, 0x1B
+    jmp .done_get_char
+.enter_pressed:
+    mov byte [kbd_enter_pressed], 0
+    mov al, 0x0D
+.done_get_char:
+    pop ecx
+    pop ebx
     iret

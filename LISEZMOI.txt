@@ -1,0 +1,2 @@
+Dossier Documents
+Ce répertoire est destiné à contenir les fichiers textes de l'utilisateur.
