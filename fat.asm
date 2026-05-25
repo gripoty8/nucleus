@@ -65,7 +65,7 @@ fat_table_buffer times 512 db 0
 fat_setup_bin_dir:
     pusha
     ; 1. Mise à jour de la table FAT pour tous les fichiers et dossiers initiaux
-    ; Cluster 2: LISEZMOITXT, 3: BIN (Dir), 4: LS, 5: RM, 6: NANO
+    ; Cluster 2: LISEZMOITXT, 3: BIN (Dir), 4: LS, 5: RM, 6: NANO, 7: CF
     mov word [fat_table_buffer], 0xFFF0
     mov word [fat_table_buffer+2], 0xFFFF
     mov word [fat_table_buffer+4], 0xFFFF
@@ -73,11 +73,13 @@ fat_setup_bin_dir:
     mov word [fat_table_buffer+8], 0xFFFF
     mov word [fat_table_buffer+10], 0xFFFF
     mov word [fat_table_buffer+12], 0xFFFF
+    mov word [fat_table_buffer+14], 0xFFFF
     
     mov eax, [fat_fat1_lba]
     mov esi, fat_table_buffer
     call ata_write_sector
     mov eax, [fat_fat2_lba]
+    mov esi, fat_table_buffer
     call ata_write_sector
 
     ; 2. Création des entrées dans le Répertoire Racine (Root Directory)
@@ -162,6 +164,15 @@ fat_setup_bin_dir:
     mov word [edi+26], 6    ; Cluster 6
     mov dword [edi+28], nano_program_size
 
+    ; Entrée "CF"
+    add edi, 32
+    mov dword [edi], 'CF  '
+    mov dword [edi+4], '    '
+    mov dword [edi+8], '    '
+    mov byte [edi+11], 0x20 ; Attribut: Archive
+    mov word [edi+26], 7    ; Cluster 7
+    mov dword [edi+28], cf_program_size
+
     ; Écriture du secteur du dossier BIN sur le disque
     mov eax, [fat_data_lba]
     inc eax                 ; LBA du Cluster 3 (fat_data_lba + (3-2))
@@ -192,6 +203,12 @@ fat_setup_bin_dir:
     mov esi, nano_program_data
     call ata_write_sector
 
+    ; CF (Cluster 7)
+    mov eax, [fat_data_lba]
+    add eax, 5              ; LBA du Cluster 7 (fat_data_lba + 5)
+    mov esi, cf_program_data
+    call ata_write_sector
+
     popa
     ret
 
@@ -207,6 +224,10 @@ rm_program_size equ $ - rm_program_data
 nano_program_data:
     incbin "nano.bin"
 nano_program_size equ $ - nano_program_data
+
+cf_program_data:
+    incbin "cf.bin"
+cf_program_size equ $ - cf_program_data
 
 lisezmoi_data:
     incbin "LISEZMOI.txt"

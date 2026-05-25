@@ -12,10 +12,13 @@ rm.bin: rm.asm
 nano.bin: nano.asm
 	$(CC) -f bin nano.asm -o nano.bin
 
+cf.bin: cf.asm
+	$(CC) -f bin cf.asm -o cf.bin
+
 boot.bin: boot.asm gdt.asm
 	$(CC) -f bin boot.asm -o boot.bin
 
-noyau.bin: ls.bin rm.bin nano.bin noyau.asm idt.asm clavier.asm affichageTextuel.asm ata.asm fat.asm
+noyau.bin: ls.bin rm.bin nano.bin cf.bin noyau.asm idt.asm clavier.asm affichageTextuel.asm ata.asm fat.asm
 	$(CC) -f bin noyau.asm -o noyau.bin
 
 os.img: boot.bin noyau.bin

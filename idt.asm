@@ -112,6 +112,7 @@ isr_systeme:
 .sys_get_root:
     mov eax, [current_dir_lba] ; Renvoie le répertoire courant à l'utilisateur via EAX
     mov ebx, [fat_data_lba]    ; Renvoie la base des données FAT dans EBX
+    mov ecx, [fat_fat1_lba]    ; Renvoie le LBA de la FAT1 dans ECX
     iret
 
 .sys_clear_screen:
