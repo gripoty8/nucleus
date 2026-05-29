@@ -299,6 +299,158 @@ builtin_cd:
     int 0x80
     ret
 
+; --- REPROGRAMMATION DU CONTROLEUR VGA EN 32 BITS ---
+
+vga_mode db 3
+
+vga_regs_13h:
+    db 0x63 ; Misc
+    db 0x03, 0x01, 0x0F, 0x00, 0x0E ; Sequencer
+    ; CRTC (index 0x13 est en 14ème position)
+    ; Ancienne ligne : 0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0xBF, 0x1F, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9C, 0x8E, 0x8F, 0x28, 0x40, 0x96, 0xB9, 0xA3, 0xFF
+    ; Nouvelle ligne corrigée (0x28 au 14ème index) :
+    db 0x5F, 0x4F, 0x50, 0x82, 0x54, 0x80, 0xBF, 0x1F, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x28, 0x00, 0x9C, 0x8E, 0x8F, 0x28, 0x40, 0x96, 0xB9, 0xA3, 0xFF
+    db 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0F, 0xFF ; GC
+    db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x41, 0x00, 0x0F, 0x00, 0x00 ; AC
+
+vga_regs_3h:
+    db 0x67 ; Misc
+    db 0x03, 0x00, 0x03, 0x00, 0x02 ; Sequencer
+    db 0x5F, 0x4F, 0x50, 0x82, 0x55, 0x81, 0xBF, 0x1F, 0x00, 0x4F, 0x0D, 0x0E, 0x00, 0x00, 0x00, 0x00, 0x9C, 0x8E, 0x8F, 0x28, 0x1F, 0x96, 0xB9, 0xA3, 0xFF ; CRTC
+    db 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x0E, 0x00, 0xFF ; GC
+    db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x0C, 0x00, 0x0F, 0x08, 0x00 ; AC
+
+write_vga_regs:
+    mov dx, 0x03C2
+    lodsb
+    out dx, al
+
+    mov ecx, 5
+    mov ah, 0
+.seq_loop:
+    mov dx, 0x03C4
+    mov al, ah
+    out dx, al
+    inc dx
+    lodsb
+    out dx, al
+    inc ah
+    loop .seq_loop
+
+    mov dx, 0x03D4
+    mov al, 0x11
+    out dx, al
+    inc dx
+    in al, dx
+    and al, 0x7F
+    out dx, al
+
+    mov ecx, 25
+    mov ah, 0
+.crtc_loop:
+    mov dx, 0x03D4
+    mov al, ah
+    out dx, al
+    inc dx
+    lodsb
+    out dx, al
+    inc ah
+    loop .crtc_loop
+
+    mov ecx, 9
+    mov ah, 0
+.gc_loop:
+    mov dx, 0x03CE
+    mov al, ah
+    out dx, al
+    inc dx
+    lodsb
+    out dx, al
+    inc ah
+    loop .gc_loop
+
+    mov dx, 0x03DA
+    in al, dx
+
+    mov ecx, 21
+    mov ah, 0
+.ac_loop:
+    mov dx, 0x03C0
+    mov al, ah
+    out dx, al
+    lodsb
+    out dx, al
+    inc ah
+    loop .ac_loop
+
+    mov dx, 0x03DA
+    in al, dx
+    mov dx, 0x03C0
+    mov al, 0x20
+    out dx, al
+    ret
+
+save_vga_font:
+    mov dx, 0x03C4
+    mov ax, 0x0604
+    out dx, ax
+    mov dx, 0x03CE
+    mov ax, 0x0005
+    out dx, ax
+    mov ax, 0x0406
+    out dx, ax
+    mov ax, 0x0204
+    out dx, ax
+
+    mov esi, 0xA0000
+    mov edi, vga_font_buffer
+    mov ecx, 2048
+    rep movsd
+    ret
+
+restore_vga_font:
+    mov dx, 0x03C4
+    mov ax, 0x0402
+    out dx, ax
+    mov ax, 0x0604
+    out dx, ax
+    mov dx, 0x03CE
+    mov ax, 0x0005
+    out dx, ax
+    mov ax, 0x0406
+    out dx, ax
+
+    mov esi, vga_font_buffer
+    mov edi, 0xA0000
+    mov ecx, 2048
+    rep movsd
+    ret
+
+set_vga_mode_13h:
+    cmp byte [vga_mode], 0x13
+    je .done
+    call save_vga_font
+    mov esi, vga_regs_13h
+    call write_vga_regs
+    mov byte [vga_mode], 0x13
+.done:
+    ret
+
+set_vga_mode_3h:
+    cmp byte [vga_mode], 3
+    je .done
+    mov esi, vga_regs_3h
+    call write_vga_regs
+    call restore_vga_font
+    mov esi, vga_regs_3h
+    call write_vga_regs
+    call init_affichage
+    mov byte [vga_mode], 3
+.done:
+    ret
+
+vga_font_buffer: times 8192 db 0
+
 ; On remplit l'image pour atteindre exactement 1.44 Mo (2880 secteurs au total, dont 1 secteur de boot)
 ; Cela évite que QEMU lève une erreur si on écrit au-delà de la fin réelle du fichier os.img !
 times (2879 * 512) - ($ - $$) db 0

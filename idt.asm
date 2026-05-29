@@ -78,6 +78,10 @@ isr_systeme:
     je .sys_clear_screen
     cmp eax, 8
     je .sys_get_char
+    cmp eax, 9
+    je .sys_vga_graphics
+    cmp eax, 10
+    je .sys_vga_text
     iret
 
 .sys_print_char:
@@ -162,4 +166,15 @@ isr_systeme:
 .done_get_char:
     pop ecx
     pop ebx
+    iret
+.sys_vga_graphics:
+    pusha
+    call set_vga_mode_13h ; Fonction pour passer en 320x200
+    popa
+    iret
+
+.sys_vga_text:
+    pusha
+    call set_vga_mode_3h  ; Fonction pour repasser en 80x25
+    popa
     iret

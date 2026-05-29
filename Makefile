@@ -21,11 +21,15 @@ boot.bin: boot.asm gdt.asm
 noyau.bin: ls.bin rm.bin nano.bin cf.bin noyau.asm idt.asm clavier.asm affichageTextuel.asm ata.asm fat.asm
 	$(CC) -f bin noyau.asm -o noyau.bin
 
-os.img: boot.bin noyau.bin
+VGA: vga.asm
+	$(CC) -f bin vga.asm -o VGA
+
+os.img: boot.bin noyau.bin VGA
 	cat boot.bin noyau.bin > os.img
+	mcopy -i os.img VGA ::/VGA
 
 run: os.img
 	$(EMU) -drive format=raw,file=os.img,index=0,media=disk,if=ide,cache=writethrough 
 
 clean:
-	rm -f *.bin *.img
+	rm -f *.bin *.img VGA
