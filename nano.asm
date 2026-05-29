@@ -15,6 +15,7 @@ start:
     jmp .exit_no_clear
 
 .format_arg:
+    mov [arg_ptr], edx
     ; Formater l'argument (nom de fichier FAT de 11 char)
     mov esi, edx
     mov edi, arg_formatted
@@ -78,11 +79,20 @@ start:
 
 .found:
     movzx eax, word [esi + 26] ; Cluster
+    test eax, eax              ; Si le cluster est 0, le fichier est vide.
+    jz .post_read              ; On ne tente pas de lire sur le disque.
+
+    ; Le fichier a du contenu, on calcule son LBA et on lit le secteur
     mov ebx, [fat_data_lba]
     add ebx, eax
     sub ebx, 2
     mov [file_lba], ebx
+    mov ecx, 0x210000
+    mov ebx, [file_lba]
+    mov eax, 4        ; Syscall 4: Read Sector
+    int 0x80
     
+.post_read:
     ; Récupérer la taille exacte
     mov eax, dword [esi + 28]
     cmp eax, 511
@@ -90,12 +100,6 @@ start:
     mov eax, 511 ; Limite de Nano
 .size_ok:
     mov [cursor_pos], eax
-
-    ; Lire le secteur du fichier en mémoire à 0x210000
-    mov ecx, 0x210000
-    mov ebx, [file_lba]
-    mov eax, 4        ; Syscall 4: Read Sector
-    int 0x80
     
     ; Remplir le reste du buffer avec des zéros
     mov edi, 0x210000
@@ -117,9 +121,18 @@ start:
     mov ebx, msg_welcome
     int 0x80
 
+    mov eax, 2
+    mov ebx, [arg_ptr]
+    int 0x80
+
+    mov eax, 2
+    mov ebx, msg_welcome_end
+    int 0x80
+
     ; 3. Afficher le contenu actuel du fichier
     mov ebx, [cursor_pos]
-    mov byte [0x210000 + ebx], 0 ; Terminateur nul temporaire pour l'affichage
+    mov byte [0x210000 + ebx], '_'   ; Affichage du curseur
+    mov byte [0x210000 + ebx + 1], 0 ; Terminateur nul temporaire
     
     mov eax, 2
     mov ebx, 0x210000
@@ -173,6 +186,10 @@ start:
     jmp .redraw_and_loop
 
 .save_and_exit:
+    ; Nettoyer le curseur virtuel de la mémoire avant la sauvegarde sur disque
+    mov ebx, [cursor_pos]
+    mov byte [0x210000 + ebx], 0
+
     ; Effacer l'écran
     mov eax, 7
     int 0x80
@@ -220,9 +237,7 @@ start:
     jmp .exit
 
 .exit:
-    ; Effacer l'écran avant de revenir au Shell
-    mov eax, 7
-    int 0x80
+    ; Le 'clear screen' est retiré ici pour laisser au message de sauvegarde le temps d'être lu
 
 .exit_no_clear:
     mov eax, 3          ; Syscall 3: Exit
@@ -230,9 +245,11 @@ start:
 
 msg_usage     db "Utilisation: NANO <fichier>", 10, 0
 msg_not_found db "Fichier introuvable. Creation non supportee.", 10, 0
-msg_welcome   db "--- MINI NANO --- (Appuyez sur ECHAP pour quitter)", 10, 0
+msg_welcome   db "--- MINI NANO --- Fichier : ", 0
+msg_welcome_end db " (Appuyez sur ECHAP pour quitter)", 10, 0
 msg_saving    db "Sauvegarde et fermeture...", 10, 0
 cursor_pos    dd 0
+arg_ptr       dd 0
 dir_lba       dd 0
 fat_data_lba  dd 0
 file_lba      dd 0

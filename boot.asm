@@ -58,7 +58,13 @@ load_kernel:
     mov dh, 0x00          ; Tête 0
     mov cl, 0x02          ; Secteur 2 (le secteur 1 est le bootloader)
     int 0x13              ; Appel interruption BIOS
+    jc .disk_error        ; Vérification d'une erreur de lecture
     ret
+
+.disk_error:
+    mov si, msg_disk_err
+    call afficher
+    jmp $
 
 switch_to_pm:
     cli                     ; Désactiver les interruptions
@@ -105,6 +111,7 @@ BOOT_DRIVE db 0
 
 ; Remplissage pour atteindre 510 octets + signature de boot
 mss_chr_noyau db "Chargement du noyau...", 13, 10, 0
+msg_disk_err db "Erreur disque !", 13, 10, 0
 mss_sl db 13, 10, 0
 times 510-($-$$) db 0
 dw 0xaa55

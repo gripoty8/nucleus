@@ -38,17 +38,59 @@ start:
     cmp al, 0xE5      ; Fichier supprimé
     je .next
     
-    ; Afficher le nom du fichier caractère par caractère (11 caractères)
+    ; Ignorer les LFN (0x0F) et le Volume Label (0x08)
+    mov al, [esi + 11]
+    cmp al, 0x0F
+    je .next
+    test al, 0x08
+    jnz .next
+    
+    ; Afficher le nom du fichier (8 caractères maximum)
     pusha
-    mov ecx, 11
+    mov ecx, 8
     mov edi, esi
-.print_char:
+.print_name:
     mov bl, [edi]
+    cmp bl, ' '
+    je .check_ext
     mov eax, 1
     int 0x80
     inc edi
-    loop .print_char
+    loop .print_name
     
+.check_ext:
+    ; Ajouter l'extension s'il y en a une
+    mov bl, [esi + 8]
+    cmp bl, ' '
+    je .check_dir
+    
+    mov bl, '.'
+    mov eax, 1
+    int 0x80
+    
+    mov ecx, 3
+    mov edi, esi
+    add edi, 8
+.print_ext:
+    mov bl, [edi]
+    cmp bl, ' '
+    je .check_dir
+    mov eax, 1
+    int 0x80
+    inc edi
+    loop .print_ext
+
+.check_dir:
+    ; Ajouter un slash si l'entrée est un répertoire
+    mov al, [esi + 11]
+    test al, 0x10
+    jz .end_print
+    
+    mov bl, '/'
+    mov eax, 1
+    int 0x80
+
+.end_print:
     ; Retour à la ligne
     mov bl, 10
     mov eax, 1
